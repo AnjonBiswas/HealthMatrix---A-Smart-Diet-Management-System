@@ -1,0 +1,266 @@
+/* Dashboard-specific layer */
+.dashboard-shell {
+    display: grid;
+    gap: 1rem;
+}
+
+.dashboard-top {
+    display: grid;
+    gap: 1rem;
+}
+
+.dashboard-stats {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+.dashboard-stats .stat-card {
+    --card-accent-1: #ab10b9;
+    --card-accent-2: #6511a6;
+    --card-tint: rgba(81, 16, 185, 0.22);
+    --card-border: rgba(16, 117, 185, 0.3);
+    --card-shadow: rgba(15, 118, 110, 0.16);
+    --card-title: #4c286b;
+    --card-value: #1a3d79;
+    --card-orb: rgba(53, 174, 198, 0.26);
+    --card-track: rgba(16, 185, 129, 0.14);
+    --card-track-border: rgba(16, 75, 185, 0.34);
+    --card-hover-shadow: rgba(85, 15, 118, 0.24);
+    position: relative;
+    overflow: hidden;
+    border-color: var(--card-border);
+    background:
+        radial-gradient(circle at 88% 16%, var(--card-tint), transparent 43%),
+        linear-gradient(162deg, #ffffff 0%, #f3fdf8 62%, #edf9f4 100%);
+    box-shadow: 0 14px 28px var(--card-shadow);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.dashboard-stats .stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 34px var(--card-hover-shadow);
+}
+
+.dashboard-stats .stat-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 7px;
+    height: 100%;
+    border-radius: 16px 0 0 16px;
+    background: linear-gradient(180deg, var(--card-accent-1), var(--card-accent-2));
+}
+
+.dashboard-stats .stat-card::after {
+    content: "";
+    position: absolute;
+    right: -18px;
+    bottom: -18px;
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--card-orb), transparent 72%);
+}
+
+.dashboard-stats .stat-card h3 {
+    color: var(--card-title);
+    letter-spacing: 0.01em;
+}
+
+.dashboard-stats .stat-card .value {
+    color: var(--card-value);
+    text-shadow: none;
+}
+
+.dashboard-stats .stat-card .meta {
+    color: #6f8594;
+    font-size: 0.84rem;
+}
+
+.dashboard-stats .stat-card .progress {
+    background: var(--card-track);
+    border: 1px solid var(--card-track-border);
+}
+
+.dashboard-stats .stat-card .progress .progress-bar {
+    background: linear-gradient(90deg, var(--card-accent-1), var(--card-accent-2));
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.34) inset;
+}
+
+.dashboard-stats .stat-card.info {
+    --card-accent-1: #38bdf8;
+    --card-accent-2: #2563eb;
+    --card-tint: rgba(59, 130, 246, 0.2);
+    --card-border: rgba(37, 99, 235, 0.28);
+    --card-shadow: rgba(37, 99, 235, 0.14);
+    --card-hover-shadow: rgba(37, 99, 235, 0.24);
+    --card-title: #315f88;
+    --card-value: #0f4570;
+    --card-orb: rgba(59, 130, 246, 0.26);
+    --card-track: rgba(59, 130, 246, 0.14);
+    --card-track-border: rgba(37, 99, 235, 0.34);
+    background:
+        radial-gradient(circle at 88% 16%, var(--card-tint), transparent 43%),
+        linear-gradient(162deg, #ffffff 0%, #f2f8ff 62%, #edf5ff 100%);
+}
+
+.dashboard-stats .stat-card.warning {
+    --card-accent-1: #f59e0b;
+    --card-accent-2: #ea580c;
+    --card-tint: rgba(245, 158, 11, 0.22);
+    --card-border: rgba(234, 88, 12, 0.28);
+    --card-shadow: rgba(217, 119, 6, 0.15);
+    --card-hover-shadow: rgba(217, 119, 6, 0.25);
+    --card-title: #8c4e18;
+    --card-value: #7c2d12;
+    --card-orb: rgba(245, 158, 11, 0.28);
+    --card-track: rgba(245, 158, 11, 0.14);
+    --card-track-border: rgba(234, 88, 12, 0.32);
+    background:
+        radial-gradient(circle at 88% 16%, var(--card-tint), transparent 43%),
+        linear-gradient(162deg, #ffffff 0%, #fff7ed 62%, #ffedd5 100%);
+}
+
+.dashboard-stats .stat-card.success {
+    --card-accent-1: #22c55e;
+    --card-accent-2: #15803d;
+    --card-tint: rgba(34, 197, 94, 0.2);
+    --card-border: rgba(21, 128, 61, 0.3);
+    --card-shadow: rgba(21, 128, 61, 0.15);
+    --card-hover-shadow: rgba(21, 128, 61, 0.24);
+    --card-title: #2f6743;
+    --card-value: #14532d;
+    --card-orb: rgba(34, 197, 94, 0.25);
+    --card-track: rgba(34, 197, 94, 0.13);
+    --card-track-border: rgba(21, 128, 61, 0.3);
+    background:
+        radial-gradient(circle at 88% 16%, var(--card-tint), transparent 43%),
+        linear-gradient(162deg, #ffffff 0%, #f1fcf4 62%, #e7f8ec 100%);
+}
+
+.dashboard-panels {
+    display: grid;
+    gap: 1rem;
+}
+
+.chart-container {
+    min-height: 320px;
+}
+
+.chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.7rem;
+}
+
+.chart-body {
+    height: 250px;
+}
+
+.activity-feed {
+    max-height: 360px;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.activity-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.activity-item .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 0.45rem;
+    background: var(--info);
+    flex-shrink: 0;
+}
+
+.activity-item .content {
+    flex: 1;
+}
+
+.activity-item .time {
+    display: block;
+    margin-top: 0.2rem;
+    color: #7b8e9d;
+    font-size: 0.75rem;
+}
+
+.calorie-widget {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.calorie-widget .details {
+    min-width: 180px;
+}
+
+.calorie-widget .details h4 {
+    margin-bottom: 0.2rem;
+}
+
+.goal-row {
+    margin-top: 0.7rem;
+}
+
+.goal-row .label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    margin-bottom: 0.28rem;
+    color: #587182;
+}
+
+.table-wrap,
+.table-responsive {
+    border: 1px solid #e3ecef;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.dashboard-filter {
+    display: flex;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+}
+
+.dashboard-filter .form-control {
+    min-width: 140px;
+}
+
+@media (min-width: 576px) {
+    .dashboard-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 768px) {
+    .dashboard-panels {
+        grid-template-columns: 1.5fr 1fr;
+    }
+}
+
+@media (min-width: 992px) {
+    .dashboard-stats {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .dashboard-shell {
+        gap: 1.15rem;
+    }
+}
+
+@media (min-width: 1200px) {
+    .chart-body {
+        height: 290px;
+    }
+}
