@@ -814,7 +814,11 @@ CREATE TABLE `messages` (
   `receiver_id` bigint(20) UNSIGNED NOT NULL,
   `receiver_type` enum('user','dietitian') NOT NULL,
   `message` text NOT NULL,
+  `attachment_path` varchar(255) DEFAULT NULL,
+  `attachment_name` varchar(255) DEFAULT NULL,
+  `attachment_mime` varchar(120) DEFAULT NULL,
   `is_read` tinyint(1) NOT NULL DEFAULT 0,
+  `seen_at` timestamp NULL DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -822,13 +826,13 @@ CREATE TABLE `messages` (
 -- Dumping data for table `messages`
 --
 
-INSERT INTO `messages` (`id`, `sender_id`, `sender_type`, `receiver_id`, `receiver_type`, `message`, `is_read`, `created_at`) VALUES
-(1, 1, 'user', 1, 'dietitian', 'I am feeling hungry at night. Any snack suggestion?', 1, '2026-04-14 20:00:00'),
-(2, 1, 'dietitian', 1, 'user', 'Try Greek yogurt with chia or cucumber with hummus.', 1, '2026-04-14 20:10:00'),
-(3, 2, 'user', 2, 'dietitian', 'Can I replace beef pasta with chicken rice?', 0, '2026-04-15 18:30:00'),
-(4, 2, 'dietitian', 2, 'user', 'Yes, keep calories and protein equivalent.', 0, '2026-04-15 18:40:00'),
-(5, 3, 'user', 1, 'dietitian', 'When does my maintenance plan start?', 1, '2026-04-15 09:00:00'),
-(6, 2, 'user', 2, 'dietitian', 'hi', 0, '2026-04-21 18:35:46');
+INSERT INTO `messages` (`id`, `sender_id`, `sender_type`, `receiver_id`, `receiver_type`, `message`, `attachment_path`, `attachment_name`, `attachment_mime`, `is_read`, `seen_at`, `created_at`) VALUES
+(1, 1, 'user', 1, 'dietitian', 'I am feeling hungry at night. Any snack suggestion?', NULL, NULL, NULL, 1, NULL, '2026-04-14 20:00:00'),
+(2, 1, 'dietitian', 1, 'user', 'Try Greek yogurt with chia or cucumber with hummus.', NULL, NULL, NULL, 1, NULL, '2026-04-14 20:10:00'),
+(3, 2, 'user', 2, 'dietitian', 'Can I replace beef pasta with chicken rice?', NULL, NULL, NULL, 0, NULL, '2026-04-15 18:30:00'),
+(4, 2, 'dietitian', 2, 'user', 'Yes, keep calories and protein equivalent.', NULL, NULL, NULL, 0, NULL, '2026-04-15 18:40:00'),
+(5, 3, 'user', 1, 'dietitian', 'When does my maintenance plan start?', NULL, NULL, NULL, 1, NULL, '2026-04-15 09:00:00'),
+(6, 2, 'user', 2, 'dietitian', 'hi', NULL, NULL, NULL, 0, NULL, '2026-04-21 18:35:46');
 
 -- --------------------------------------------------------
 

@@ -128,10 +128,12 @@ if ($foodSearchQuery !== '') {
 }
 
 $stmtPlan = $pdo->prepare(
-    'SELECT udp.id AS user_plan_id, udp.assigned_date, udp.status AS assign_status,
-            dp.id AS diet_plan_id, dp.title, dp.duration_days, dp.total_calories
+    'SELECT udp.id AS user_plan_id, udp.assigned_date, udp.end_date, udp.status AS assign_status, udp.dietitian_notes,
+            dp.id AS diet_plan_id, dp.title, dp.description, dp.goal_type, dp.duration_days, dp.total_calories,
+            d.id AS dietitian_id, d.full_name AS dietitian_name, d.specialization
      FROM user_diet_plans udp
      JOIN diet_plans dp ON dp.id = udp.diet_plan_id
+     JOIN dietitians d ON d.id = udp.dietitian_id
      WHERE udp.user_id = :user_id AND udp.status = "active"
      ORDER BY udp.assigned_date DESC
      LIMIT 1'
@@ -150,6 +152,7 @@ if ($activePlan) {
 
 $todayMeals = [];
 $eatenMeals = [];
+$todayMealCalories = 0;
 if ($activePlan) {
     $stmtMeals = $pdo->prepare(
         'SELECT id, meal_type, meal_name, description, calories, protein, carbs, fat
@@ -162,6 +165,9 @@ if ($activePlan) {
         ':day_number' => $todayDayNumber,
     ]);
     $todayMeals = $stmtMeals->fetchAll();
+    foreach ($todayMeals as $meal) {
+        $todayMealCalories += (int) ($meal['calories'] ?? 0);
+    }
 
     $stmtEaten = $pdo->prepare('SELECT food_name, meal_type, calories FROM food_log WHERE user_id = :user_id AND log_date = :log_date');
     $stmtEaten->execute([':user_id' => $userId, ':log_date' => $today]);
@@ -169,6 +175,20 @@ if ($activePlan) {
         $eatenMeals[$item['food_name'] . '|' . $item['meal_type'] . '|' . $item['calories']] = true;
     }
 }
+
+$completedMealCount = 0;
+foreach ($todayMeals as $meal) {
+    $mealKey = $meal['meal_name'] . '|' . $meal['meal_type'] . '|' . $meal['calories'];
+    if (isset($eatenMeals[$mealKey])) {
+        $completedMealCount++;
+    }
+}
+$todayMealCount = count($todayMeals);
+$todayPlanProgress = $todayMealCount > 0 ? (int) round(($completedMealCount / $todayMealCount) * 100) : 0;
+$assignedDateLabel = $activePlan ? date('M d, Y', strtotime((string) $activePlan['assigned_date'])) : '';
+$endDateLabel = $activePlan && !empty($activePlan['end_date']) ? date('M d, Y', strtotime((string) $activePlan['end_date'])) : 'Ongoing';
+$planGoalLabel = $activePlan ? ucwords(str_replace('_', ' ', (string) ($activePlan['goal_type'] ?? 'maintain'))) : '';
+$dietitianNotes = $activePlan ? trim((string) ($activePlan['dietitian_notes'] ?? '')) : '';
 
 $stmtTodayTotals = $pdo->prepare(
     'SELECT
@@ -289,6 +309,69 @@ function e(string $v): string
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="<?= SITE_URL ?>/assets/css/style.css">
     <link rel="stylesheet" href="<?= SITE_URL ?>/assets/css/dashboard.css">
+    <style>
+        .assigned-plan-hero {
+            border: 1px solid rgba(46, 204, 113, .18);
+            border-radius: 18px;
+            padding: 1rem;
+            background: linear-gradient(135deg, rgba(46, 204, 113, .10) 0%, rgba(255, 255, 255, .98) 65%);
+        }
+        .plan-meta-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .35rem .6rem;
+            border-radius: 999px;
+            background: #f4fbf7;
+            border: 1px solid #d7ebde;
+            color: #245b40;
+            font-size: .82rem;
+            margin-right: .4rem;
+            margin-bottom: .4rem;
+        }
+        .plan-quick-actions {
+            display: flex;
+            gap: .6rem;
+            flex-wrap: wrap;
+            margin-top: .8rem;
+        }
+        .today-plan-progress {
+            min-width: 190px;
+            max-width: 240px;
+            margin-left: auto;
+        }
+        .dietitian-note-box {
+            border-left: 4px solid #2ecc71;
+            background: #f7fcf9;
+            border-radius: 10px;
+            padding: .85rem .95rem;
+        }
+        .meal-plan-item {
+            border: 1px solid #e8efeb;
+            border-radius: 14px;
+            padding: .9rem 1rem;
+            background: #fff;
+            transition: box-shadow .2s ease, transform .2s ease;
+        }
+        .meal-plan-item:hover {
+            box-shadow: 0 10px 24px rgba(44, 62, 80, .06);
+            transform: translateY(-1px);
+        }
+        .meal-plan-item.is-complete {
+            background: linear-gradient(135deg, #effcf3 0%, #ffffff 100%);
+            border-color: #cfe8d6;
+        }
+        .meal-macro-badge {
+            display: inline-block;
+            padding: .2rem .5rem;
+            border-radius: 999px;
+            background: #f4f7f9;
+            color: #526472;
+            font-size: .78rem;
+            margin-right: .35rem;
+            margin-top: .35rem;
+        }
+    </style>
 </head>
 <body>
 <div class="app-layout">
@@ -424,29 +507,74 @@ function e(string $v): string
                     <div class="card">
                         <div class="card-header d-flex justify-content-between">
                             <span>Today's Meal Plan</span>
-                            <div>
+                            <div class="d-flex gap-2 flex-wrap justify-content-end">
                                 <a href="<?= SITE_URL ?>/user/food_log.php" class="btn btn-outline btn-sm"><i class="fa-solid fa-plus me-1"></i>Log Custom Food</a>
+                                <?php if ($activePlan): ?>
+                                    <a href="<?= SITE_URL ?>/user/diet_plan.php" class="btn btn-outline btn-sm"><i class="fa-solid fa-calendar-days me-1"></i>Full Plan</a>
+                                <?php endif; ?>
                             </div>
                         </div>
                         <div class="card-body">
                             <?php if (empty($todayMeals)): ?>
                                 <p class="text-muted mb-0">No meals found for today. Assign a diet plan to see meals.</p>
                             <?php else: ?>
+                                <div class="assigned-plan-hero mb-3">
+                                    <div class="d-flex gap-3 flex-wrap align-items-start">
+                                        <div class="flex-grow-1">
+                                            <h5 class="mb-1"><?= e((string) $activePlan['title']) ?></h5>
+                                            <p class="text-muted mb-2"><?= e((string) ($activePlan['description'] ?: 'Your dietitian has prepared today\'s meal schedule for you.')) ?></p>
+                                            <div class="mb-1">
+                                                <span class="plan-meta-chip"><i class="fa-solid fa-user-doctor"></i><?= e((string) $activePlan['dietitian_name']) ?></span>
+                                                <span class="plan-meta-chip"><i class="fa-solid fa-stethoscope"></i><?= e((string) $activePlan['specialization']) ?></span>
+                                                <span class="plan-meta-chip"><i class="fa-solid fa-bullseye"></i><?= e($planGoalLabel) ?></span>
+                                                <span class="plan-meta-chip"><i class="fa-solid fa-calendar-day"></i>Day <?= (int) $todayDayNumber ?></span>
+                                                <span class="plan-meta-chip"><i class="fa-solid fa-fire"></i><?= (int) $todayMealCalories ?> kcal today</span>
+                                            </div>
+                                            <small class="text-muted d-block">Assigned <?= e($assignedDateLabel) ?><?php if ($endDateLabel): ?> • Ends <?= e($endDateLabel) ?><?php endif; ?></small>
+                                            <div class="plan-quick-actions">
+                                                <a href="<?= SITE_URL ?>/user/messages.php?dietitian_id=<?= (int) $activePlan['dietitian_id'] ?>" class="btn btn-success btn-sm"><i class="fa-solid fa-message me-1"></i>Message Dietitian</a>
+                                                <a href="<?= SITE_URL ?>/user/download_plan.php" class="btn btn-outline btn-sm" target="_blank" rel="noopener"><i class="fa-solid fa-download me-1"></i>Download Plan</a>
+                                                <a href="<?= SITE_URL ?>/user/diet_plan.php" class="btn btn-outline btn-sm"><i class="fa-solid fa-book-open me-1"></i>View Weekly Plan</a>
+                                            </div>
+                                        </div>
+                                        <div class="today-plan-progress">
+                                            <div class="small text-muted mb-1">Today's completion</div>
+                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                                <strong><?= $completedMealCount ?> / <?= $todayMealCount ?> meals</strong>
+                                                <span class="badge"><?= $todayPlanProgress ?>%</span>
+                                            </div>
+                                            <div class="progress" style="height:10px;">
+                                                <div class="progress-bar bg-success" style="width: <?= $todayPlanProgress ?>%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <?php if ($dietitianNotes !== ''): ?>
+                                    <div class="dietitian-note-box mb-3">
+                                        <div class="fw-semibold mb-1"><i class="fa-solid fa-note-sticky me-1"></i>Dietitian Note</div>
+                                        <div class="text-muted"><?= e($dietitianNotes) ?></div>
+                                    </div>
+                                <?php endif; ?>
+
                                 <?php foreach ($todayMeals as $meal): ?>
                                     <?php
                                     $key = $meal['meal_name'] . '|' . $meal['meal_type'] . '|' . $meal['calories'];
                                     $checked = isset($eatenMeals[$key]);
                                     ?>
-                                    <form method="post" class="border rounded p-2 mb-2 d-flex justify-content-between align-items-start">
+                                    <form method="post" class="meal-plan-item <?= $checked ? 'is-complete' : '' ?> mb-2 d-flex justify-content-between align-items-start gap-3">
                                         <input type="hidden" name="action" value="toggle_meal">
                                         <input type="hidden" name="meal_id" value="<?= (int) $meal['id'] ?>">
                                         <input type="hidden" name="mark_eaten" value="<?= $checked ? '0' : '1' ?>">
                                         <div>
-                                            <div class="fw-semibold"><?= e(ucfirst((string) $meal['meal_type'])) ?>: <?= e((string) $meal['meal_name']) ?></div>
+                                            <div class="fw-semibold mb-1"><?= e(ucfirst((string) $meal['meal_type'])) ?>: <?= e((string) $meal['meal_name']) ?></div>
                                             <small class="text-muted"><?= e((string) ($meal['description'] ?? '')) ?></small><br>
-                                            <small class="text-muted"><?= (int) $meal['calories'] ?> kcal | P <?= (float) $meal['protein'] ?>g | C <?= (float) $meal['carbs'] ?>g | F <?= (float) $meal['fat'] ?>g</small>
+                                            <span class="meal-macro-badge"><?= (int) $meal['calories'] ?> kcal</span>
+                                            <span class="meal-macro-badge">P <?= (float) $meal['protein'] ?>g</span>
+                                            <span class="meal-macro-badge">C <?= (float) $meal['carbs'] ?>g</span>
+                                            <span class="meal-macro-badge">F <?= (float) $meal['fat'] ?>g</span>
                                         </div>
-                                        <button type="submit" class="btn btn-sm <?= $checked ? 'btn-success' : 'btn-outline' ?>">
+                                        <button type="submit" class="btn btn-sm <?= $checked ? 'btn-success' : 'btn-outline' ?>" style="min-width: 122px;">
                                             <i class="fa-solid <?= $checked ? 'fa-check-circle' : 'fa-circle' ?>"></i> <?= $checked ? 'Eaten' : 'Mark Eaten' ?>
                                         </button>
                                     </form>

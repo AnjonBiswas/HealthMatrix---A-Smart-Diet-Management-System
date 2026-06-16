@@ -7,6 +7,8 @@ require_once __DIR__ . '/../includes/functions.php';
 redirectIfNotLoggedIn(['user']);
 
 $pdo = Database::getInstance()->getConnection();
+ensureMessagesInfrastructure($pdo);
+
 $userId = (int) ($_SESSION['user_id'] ?? 0);
 if ($userId <= 0) {
     header('Location: ' . SITE_URL . '/auth/login.php');
@@ -20,16 +22,15 @@ $stmtConversations = $pdo->prepare(
         d.id AS dietitian_id,
         d.full_name,
         d.profile_pic,
+        d.specialization,
         last_msg.message AS last_message,
+        last_msg.attachment_path AS last_attachment_path,
         last_msg.created_at AS last_time,
         COALESCE(unread.unread_count, 0) AS unread_count
      FROM dietitians d
      JOIN (
          SELECT
-            CASE
-                WHEN sender_type = "dietitian" THEN sender_id
-                ELSE receiver_id
-            END AS dietitian_id,
+            CASE WHEN sender_type = "dietitian" THEN sender_id ELSE receiver_id END AS dietitian_id,
             MAX(id) AS max_msg_id
          FROM messages
          WHERE
@@ -55,10 +56,6 @@ $stmtConversations->execute([
 ]);
 $conversations = $stmtConversations->fetchAll();
 
-if ($selectedDietitianId <= 0 && !empty($conversations)) {
-    $selectedDietitianId = (int) $conversations[0]['dietitian_id'];
-}
-
 $stmtDietitians = $pdo->query(
     'SELECT id, full_name, profile_pic, specialization
      FROM dietitians
@@ -66,6 +63,25 @@ $stmtDietitians = $pdo->query(
      ORDER BY full_name ASC'
 );
 $activeDietitians = $stmtDietitians->fetchAll();
+
+$dietitianMap = [];
+foreach ($activeDietitians as $dietitian) {
+    $dietitianMap[(int) $dietitian['id']] = $dietitian;
+}
+foreach ($conversations as $conversation) {
+    $dietitianMap[(int) $conversation['dietitian_id']] = [
+        'id' => (int) $conversation['dietitian_id'],
+        'full_name' => (string) $conversation['full_name'],
+        'profile_pic' => $conversation['profile_pic'],
+        'specialization' => (string) ($conversation['specialization'] ?? ''),
+    ];
+}
+
+if ($selectedDietitianId <= 0 && !empty($conversations)) {
+    $selectedDietitianId = (int) $conversations[0]['dietitian_id'];
+}
+
+$selectedDietitian = $dietitianMap[$selectedDietitianId] ?? null;
 
 function e(string $v): string
 {
@@ -83,26 +99,49 @@ function e(string $v): string
     <link rel="stylesheet" href="<?= SITE_URL ?>/assets/css/style.css">
     <link rel="stylesheet" href="<?= SITE_URL ?>/assets/css/dashboard.css">
     <style>
-        .chat-layout { display:grid; grid-template-columns:340px 1fr; gap:1rem; min-height:72vh; }
-        .conv-list { border:1px solid var(--border); border-radius:12px; background:#fff; overflow:hidden; }
-        .conv-header { padding:.9rem; border-bottom:1px solid #edf1f3; }
-        .conv-scroll { max-height:62vh; overflow:auto; }
-        .conv-item { display:flex; gap:.6rem; padding:.7rem .9rem; border-bottom:1px solid #f2f4f6; cursor:pointer; }
-        .conv-item.active { background:#eefbf3; }
-        .conv-item:hover { background:#f8fffb; }
-        .chat-panel { border:1px solid var(--border); border-radius:12px; background:#fff; display:flex; flex-direction:column; min-height:72vh; }
-        .chat-head { padding:.9rem 1rem; border-bottom:1px solid #edf1f3; }
-        .chat-body { flex:1; overflow:auto; padding:1rem; background:#f7fbf9; }
-        .chat-input { border-top:1px solid #edf1f3; padding:.8rem; }
-        .msg-row { display:flex; margin-bottom:.75rem; }
-        .msg-row.user { justify-content:flex-end; }
-        .bubble { max-width:75%; padding:.6rem .75rem; border-radius:14px; line-height:1.4; }
-        .bubble.user { background:#2ECC71; color:#fff; border-bottom-right-radius:4px; }
-        .bubble.dietitian { background:#e9edf1; color:#2C3E50; border-bottom-left-radius:4px; }
-        .msg-time { font-size:.72rem; color:#6b7a86; margin-top:.2rem; text-align:right; }
-        .msg-time.left { text-align:left; }
-        .avatar-sm { width:42px; height:42px; border-radius:50%; object-fit:cover; }
-        @media (max-width: 991px) { .chat-layout { grid-template-columns:1fr; } .chat-panel { min-height:60vh; } .conv-scroll { max-height:36vh; } }
+        .chat-layout { display:grid; grid-template-columns:350px 1fr; gap:1rem; min-height:72vh; }
+        .conv-list, .chat-panel { border:1px solid rgba(63, 86, 74, .12); border-radius:24px; background:#fff; overflow:hidden; box-shadow:0 18px 40px rgba(27, 67, 50, .08); }
+        .conv-list { background:linear-gradient(180deg, #ffffff 0%, #f5fbf7 100%); }
+        .conv-header, .chat-head { padding:1rem 1.1rem; border-bottom:1px solid #edf1f3; }
+        .conv-scroll { max-height:72vh; overflow:auto; }
+        .conv-item { display:flex; gap:.85rem; padding:1rem 1.05rem; border-bottom:1px solid rgba(237, 241, 243, .85); cursor:pointer; text-decoration:none; color:inherit; transition:background .2s ease, transform .2s ease; }
+        .conv-item.active { background:linear-gradient(135deg, #e9fff0 0%, #f5fff8 100%); }
+        .conv-item:hover { background:#f8fffb; transform:translateX(2px); }
+        .conv-item .badge { align-self:center; background:#1f8f5f; color:#fff; border-radius:999px; min-width:28px; }
+        .chat-panel { display:flex; flex-direction:column; min-height:72vh; background:linear-gradient(180deg, #ffffff 0%, #fbfefc 100%); }
+        .chat-head { background:
+            radial-gradient(circle at top left, rgba(46, 204, 113, .14), transparent 28%),
+            linear-gradient(135deg, #ffffff 0%, #f4fbf7 100%); }
+        .chat-body { flex:1; overflow:auto; padding:1.2rem; background:
+            radial-gradient(circle at top left, rgba(46, 204, 113, .07), transparent 22%),
+            radial-gradient(circle at bottom right, rgba(31, 143, 95, .06), transparent 24%),
+            linear-gradient(180deg, #f7fbf9 0%, #f2f8f5 100%); }
+        .chat-input { border-top:1px solid #edf1f3; padding:1rem; background:#fff; }
+        .composer-shell { border:1px solid #dce9e2; border-radius:22px; padding:.8rem; background:linear-gradient(180deg, #ffffff 0%, #f9fcfa 100%); box-shadow:0 10px 24px rgba(26, 43, 34, .05); }
+        .message-box { border:none; resize:none; min-height:54px; background:transparent; box-shadow:none !important; font-size:.98rem; }
+        .message-box:focus { background:transparent; }
+        .msg-row { display:flex; margin-bottom:1rem; }
+        .msg-row.self { justify-content:flex-end; }
+        .bubble-wrap { max-width:min(78%, 560px); }
+        .bubble { padding:.85rem .95rem; border-radius:22px; line-height:1.48; box-shadow:0 10px 24px rgba(44, 62, 80, .05); position:relative; }
+        .bubble.self { background:linear-gradient(135deg, #2ecc71 0%, #1f8f5f 100%); color:#fff; border-bottom-right-radius:8px; }
+        .bubble.other { background:#fff; color:#234; border:1px solid #e6edef; border-bottom-left-radius:8px; }
+        .message-image { width:100%; max-width:300px; border-radius:16px; margin-top:.65rem; display:block; box-shadow:0 10px 22px rgba(25, 38, 33, .12); }
+        .msg-meta { font-size:.74rem; color:#6b7a86; margin-top:.35rem; display:flex; gap:.45rem; justify-content:flex-end; align-items:center; }
+        .msg-meta.left { justify-content:flex-start; }
+        .seen-pill { padding:.1rem .45rem; border-radius:999px; background:rgba(31, 143, 95, .12); color:#1f8f5f; font-weight:600; }
+        .avatar-sm { width:48px; height:48px; border-radius:16px; object-fit:cover; flex-shrink:0; box-shadow:0 8px 18px rgba(27, 67, 50, .12); }
+        .composer-tools { display:flex; justify-content:space-between; align-items:center; gap:.75rem; margin-top:.6rem; flex-wrap:wrap; }
+        .attach-btn { border-radius:999px; border-color:#cfe4d8; background:#f7fbf8; color:#245b40; }
+        .send-btn { width:48px; height:48px; border-radius:16px; border:none; background:linear-gradient(135deg, #2ecc71 0%, #1f8f5f 100%); box-shadow:0 12px 24px rgba(31, 143, 95, .28); }
+        .attachment-chip { display:none; align-items:center; gap:.65rem; padding:.45rem .7rem; border:1px solid #d9e9de; background:linear-gradient(180deg, #f7fbf8 0%, #f0f8f3 100%); border-radius:18px; }
+        .attachment-chip.active { display:inline-flex; }
+        .attachment-preview { width:54px; height:54px; border-radius:14px; object-fit:cover; box-shadow:0 8px 18px rgba(31, 143, 95, .15); }
+        .attachment-meta { display:flex; flex-direction:column; line-height:1.2; }
+        .attachment-meta strong { font-size:.82rem; color:#245b40; }
+        .empty-chat { height:100%; display:flex; align-items:center; justify-content:center; color:#7c8b97; text-align:center; padding:2rem; }
+        .empty-state-card { max-width:360px; padding:1.4rem; border-radius:24px; background:rgba(255, 255, 255, .82); border:1px solid rgba(31, 143, 95, .1); box-shadow:0 14px 28px rgba(27, 67, 50, .08); }
+        @media (max-width: 991px) { .chat-layout { grid-template-columns:1fr; } .chat-panel { min-height:62vh; } .conv-scroll { max-height:35vh; } .bubble-wrap { max-width:88%; } }
     </style>
 </head>
 <body>
@@ -126,7 +165,7 @@ function e(string $v): string
         <div class="container-fluid">
             <nav class="navbar">
                 <button class="hamburger" id="sidebarToggle"><span></span><span></span><span></span></button>
-                <div><h5 class="mb-0">Messages</h5><small class="text-muted">Chat with your dietitian</small></div>
+                <div><h5 class="mb-0">Messages</h5><small class="text-muted">Chat with your dietitian and share meal photos</small></div>
             </nav>
             <div id="msgAlert"></div>
 
@@ -143,15 +182,16 @@ function e(string $v): string
                             <?php
                             $avatar = !empty($c['profile_pic']) ? SITE_URL . '/uploads/' . ltrim((string) $c['profile_pic'], '/') : SITE_URL . '/assets/images/default_avatar.png';
                             $active = (int) $c['dietitian_id'] === $selectedDietitianId ? 'active' : '';
+                            $snippet = trim((string) $c['last_message']) !== '' ? (string) $c['last_message'] : (!empty($c['last_attachment_path']) ? 'Photo' : '');
                             ?>
                             <a class="conv-item <?= $active ?>" data-name="<?= e(strtolower((string) $c['full_name'])) ?>" href="<?= SITE_URL ?>/user/messages.php?dietitian_id=<?= (int) $c['dietitian_id'] ?>">
                                 <img class="avatar-sm" src="<?= e($avatar) ?>" alt="avatar">
-                                <div class="flex-grow-1">
-                                    <div class="d-flex justify-content-between">
-                                        <strong><?= e((string) $c['full_name']) ?></strong>
+                                <div class="flex-grow-1 min-w-0">
+                                    <div class="d-flex justify-content-between gap-2">
+                                        <strong class="text-truncate"><?= e((string) $c['full_name']) ?></strong>
                                         <small class="text-muted"><?= e(date('h:i A', strtotime((string) $c['last_time']))) ?></small>
                                     </div>
-                                    <small class="text-muted d-block"><?= e(mb_strimwidth((string) $c['last_message'], 0, 36, '...')) ?></small>
+                                    <small class="text-muted d-block text-truncate"><?= e(mb_strimwidth($snippet, 0, 40, '...')) ?></small>
                                 </div>
                                 <?php if ((int) $c['unread_count'] > 0): ?>
                                     <span class="badge"><?= (int) $c['unread_count'] ?></span>
@@ -166,22 +206,37 @@ function e(string $v): string
 
                 <section class="chat-panel">
                     <div class="chat-head">
-                        <?php if ($selectedDietitianId > 0): ?>
-                            <strong id="chatTitle">Conversation with Dietitian #<?= $selectedDietitianId ?></strong>
-                        <?php else: ?>
-                            <strong id="chatTitle">No conversation selected</strong>
-                        <?php endif; ?>
+                        <strong id="chatTitle"><?= $selectedDietitian ? e((string) $selectedDietitian['full_name']) : 'No conversation selected' ?></strong>
+                        <div class="text-muted small" id="chatSubtitle"><?= $selectedDietitian ? e((string) ($selectedDietitian['specialization'] ?? 'Dietitian')) : 'Choose a dietitian to start messaging' ?></div>
                     </div>
                     <div class="chat-body" id="chatBody">
-                        <p class="text-muted">Loading conversation...</p>
+                        <div class="empty-chat">Loading conversation...</div>
                     </div>
                     <div class="chat-input">
-                        <form id="sendMessageForm" class="d-flex gap-2">
-                            <input type="hidden" id="selectedDietitianId" value="<?= (int) $selectedDietitianId ?>">
-                            <textarea class="form-control" id="messageInput" rows="2" maxlength="1000" placeholder="Type your message..."></textarea>
-                            <button class="btn btn-success" type="submit"><i class="fa-solid fa-paper-plane"></i></button>
+                        <form id="sendMessageForm" enctype="multipart/form-data">
+                            <input type="hidden" id="selectedPartnerId" value="<?= (int) $selectedDietitianId ?>">
+                            <div class="composer-shell">
+                                <textarea class="form-control message-box" id="messageInput" rows="2" maxlength="1000" placeholder="Type a message or share a meal photo..."></textarea>
+                                <div class="composer-tools">
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        <input type="file" id="attachmentInput" accept="image/*" capture="environment" hidden>
+                                        <button class="btn attach-btn btn-sm" type="button" id="attachBtn"><i class="fa-solid fa-camera"></i> Add photo</button>
+                                        <div class="attachment-chip" id="attachmentChip">
+                                            <img class="attachment-preview" id="attachmentPreview" alt="preview">
+                                            <div class="attachment-meta">
+                                                <strong id="attachmentName">Photo ready</strong>
+                                                <span class="small text-muted">Will send with your message</span>
+                                            </div>
+                                            <button class="btn btn-sm btn-link text-danger p-0" type="button" id="removeAttachmentBtn"><i class="fa-solid fa-xmark"></i></button>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <small class="text-muted">Enter to send</small>
+                                        <button class="btn send-btn text-white" type="submit" id="sendBtn"><i class="fa-solid fa-paper-plane"></i></button>
+                                    </div>
+                                </div>
+                            </div>
                         </form>
-                        <small class="text-muted">Enter to send, Shift+Enter for newline.</small>
                     </div>
                 </section>
             </div>
@@ -212,78 +267,172 @@ function e(string $v): string
 <script src="<?= SITE_URL ?>/assets/js/main.js"></script>
 <script>
 const msgApi = '<?= SITE_URL ?>/api/messages.php';
+const actorType = 'user';
+const partnerType = 'dietitian';
 const chatBody = document.getElementById('chatBody');
+const chatTitle = document.getElementById('chatTitle');
+const chatSubtitle = document.getElementById('chatSubtitle');
 const messageInput = document.getElementById('messageInput');
-const selectedDietitianIdInput = document.getElementById('selectedDietitianId');
+const selectedPartnerIdInput = document.getElementById('selectedPartnerId');
 const msgAlert = document.getElementById('msgAlert');
+const attachmentInput = document.getElementById('attachmentInput');
+const attachmentChip = document.getElementById('attachmentChip');
+const attachmentPreview = document.getElementById('attachmentPreview');
+const attachmentName = document.getElementById('attachmentName');
+const sendMessageForm = document.getElementById('sendMessageForm');
+const sendBtn = document.getElementById('sendBtn');
+let activeRequest = null;
+let attachmentPreviewToken = 0;
 
-function showMsgAlert(message, type='success') {
-    msgAlert.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+function showMsgAlert(message, type = 'success') {
+    msgAlert.innerHTML = `<div class="alert alert-${type}">${escapeHtml(message)}</div>`;
+    window.setTimeout(() => {
+        if (msgAlert.textContent.trim() === message.trim()) {
+            msgAlert.innerHTML = '';
+        }
+    }, 4000);
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, s => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[s]));
+}
+
+function formatTime(value) {
+    if (!value) return '';
+    const dt = new Date(String(value).replace(' ', 'T'));
+    return Number.isNaN(dt.getTime()) ? value : dt.toLocaleString([], { month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+async function msgPostForm(formData) {
+    const res = await fetch(msgApi, { method: 'POST', body: formData });
+    return await res.json();
 }
 
 async function msgPost(payload) {
-    const res = await fetch(msgApi, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams(payload)
-    });
-    return await res.json();
+    const formData = new FormData();
+    Object.entries(payload).forEach(([key, value]) => formData.append(key, value));
+    return await msgPostForm(formData);
+}
+
+function currentPartnerId() {
+    return parseInt(selectedPartnerIdInput.value || '0', 10);
+}
+
+function clearAttachment() {
+    attachmentPreviewToken += 1;
+    attachmentInput.value = '';
+    attachmentPreview.removeAttribute('src');
+    attachmentName.textContent = 'Photo ready';
+    attachmentChip.classList.remove('active');
+}
+
+function resetComposer() {
+    sendMessageForm.reset();
+    messageInput.value = '';
+    clearAttachment();
 }
 
 function renderMessages(messages) {
     if (!messages || !messages.length) {
-        chatBody.innerHTML = '<p class="text-muted">No messages yet. Start the conversation.</p>';
+        chatBody.innerHTML = '<div class="empty-chat"><div class="empty-state-card"><h6 class="mb-2">Start the conversation</h6><p class="mb-0">Ask a question, share your meal progress, or send a quick photo for feedback.</p></div></div>';
         return;
     }
-    chatBody.innerHTML = messages.map(m => {
-        const isUser = m.sender_type === 'user';
-        const time = new Date(m.created_at.replace(' ', 'T')).toLocaleString([], { month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' });
-        return `<div class="msg-row ${isUser ? 'user' : ''}">
-            <div>
-                <div class="bubble ${isUser ? 'user' : 'dietitian'}">${escapeHtml(m.message)}</div>
-                <div class="msg-time ${isUser ? '' : 'left'}">${time}</div>
+
+    chatBody.innerHTML = messages.map((m, index) => {
+        const isSelf = m.sender_type === actorType;
+        const textHtml = m.message ? `<div>${escapeHtml(m.message).replace(/\n/g, '<br>')}</div>` : '';
+        const imageHtml = m.attachment_url ? `<a href="${encodeURI(m.attachment_url)}" target="_blank" rel="noopener"><img class="message-image" src="${encodeURI(m.attachment_url)}" alt="${escapeHtml(m.attachment_name || 'Attachment')}"></a>` : '';
+        const receipt = isSelf ? (m.is_read ? 'Seen' : 'Sent') : '';
+        const receiptHtml = receipt ? `<span class="${m.is_read ? 'seen-pill' : ''}">${receipt}</span>` : '';
+        return `<div class="msg-row ${isSelf ? 'self' : ''}">
+            <div class="bubble-wrap">
+                <div class="bubble ${isSelf ? 'self' : 'other'}">
+                    ${textHtml}${imageHtml}
+                </div>
+                <div class="msg-meta ${isSelf ? '' : 'left'}">
+                    <span>${formatTime(m.created_at)}</span>
+                    ${receiptHtml}
+                </div>
             </div>
         </div>`;
     }).join('');
+
     chatBody.scrollTop = chatBody.scrollHeight;
 }
 
-function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, s => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[s]));
-}
-
 async function loadMessages() {
-    const dietitianId = parseInt(selectedDietitianIdInput.value || '0', 10);
-    if (!dietitianId) {
-        chatBody.innerHTML = '<p class="text-muted">Choose a dietitian to start messaging.</p>';
+    const partnerId = currentPartnerId();
+    if (!partnerId) {
+        chatTitle.textContent = 'No conversation selected';
+        chatSubtitle.textContent = 'Choose a dietitian to start messaging';
+        chatBody.innerHTML = '<div class="empty-chat">Choose a dietitian to start messaging.</div>';
         return;
     }
-    const result = await msgPost({ action: 'get', dietitian_id: dietitianId });
+
+    activeRequest = partnerId;
+    const result = await msgPost({ action: 'get', partner_id: partnerId, partner_type: partnerType });
+    if (activeRequest !== partnerId) {
+        return;
+    }
     if (!result.success) {
+        chatBody.innerHTML = '<div class="empty-chat">Could not load messages right now.</div>';
         showMsgAlert(result.message || 'Could not load messages.', 'danger');
         return;
     }
+
+    if (result.partner) {
+        chatTitle.textContent = result.partner.name || 'Dietitian';
+        chatSubtitle.textContent = 'Direct conversation';
+    }
     renderMessages(result.messages || []);
-    await msgPost({ action: 'mark_read', dietitian_id: dietitianId });
+    await msgPost({ action: 'mark_read', partner_id: partnerId, partner_type: partnerType });
 }
 
 document.getElementById('sendMessageForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const dietitianId = parseInt(selectedDietitianIdInput.value || '0', 10);
+
+    const partnerId = currentPartnerId();
     const message = messageInput.value.trim();
-    if (!dietitianId) { showMsgAlert('Select a dietitian first.', 'warning'); return; }
-    if (!message) { showMsgAlert('Message cannot be empty.', 'warning'); return; }
-    if (message.length > 1000) { showMsgAlert('Message too long (max 1000 chars).', 'warning'); return; }
-    const result = await msgPost({ action: 'send', dietitian_id: dietitianId, message });
-    if (!result.success) { showMsgAlert(result.message || 'Could not send message.', 'danger'); return; }
-    messageInput.value = '';
+    const attachment = attachmentInput.files[0];
+    if (!partnerId) {
+        showMsgAlert('Select a dietitian first.', 'warning');
+        return;
+    }
+    if (!message && !attachment) {
+        showMsgAlert('Write a message or attach a photo.', 'warning');
+        return;
+    }
+    if (message.length > 1000) {
+        showMsgAlert('Message too long (max 1000 chars).', 'warning');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('action', 'send');
+    formData.append('partner_type', partnerType);
+    formData.append('receiver_type', partnerType);
+    formData.append('dietitian_id', String(partnerId));
+    formData.append('message', message);
+    if (attachment) {
+        formData.append('attachment', attachment);
+    }
+
+    sendBtn.disabled = true;
+    const result = await msgPostForm(formData);
+    sendBtn.disabled = false;
+    if (!result.success) {
+        showMsgAlert(result.message || 'Could not send message.', 'danger');
+        return;
+    }
+
+    resetComposer();
     await loadMessages();
 });
 
 messageInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        document.getElementById('sendMessageForm').dispatchEvent(new Event('submit'));
+        document.getElementById('sendMessageForm').requestSubmit();
     }
 });
 
@@ -295,9 +444,29 @@ document.getElementById('convSearch').addEventListener('input', function () {
     });
 });
 
-setInterval(loadMessages, 10000);
+document.getElementById('attachBtn').addEventListener('click', () => attachmentInput.click());
+document.getElementById('removeAttachmentBtn').addEventListener('click', clearAttachment);
+attachmentInput.addEventListener('change', () => {
+    const file = attachmentInput.files[0];
+    if (!file) {
+        clearAttachment();
+        return;
+    }
+    const token = ++attachmentPreviewToken;
+    attachmentName.textContent = file.name;
+    attachmentChip.classList.add('active');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        if (token !== attachmentPreviewToken) {
+            return;
+        }
+        attachmentPreview.src = event.target?.result || '';
+    };
+    reader.readAsDataURL(file);
+});
+
+setInterval(loadMessages, 5000);
 loadMessages();
 </script>
 </body>
 </html>
-

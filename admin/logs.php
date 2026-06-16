@@ -22,7 +22,7 @@ if ($actionType !== '') { $where[] = 'action LIKE :ac'; $params[':ac'] = '%' . $
 if ($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)) { $where[] = 'DATE(created_at)>=:df'; $params[':df'] = $dateFrom; }
 if ($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)) { $where[] = 'DATE(created_at)<=:dt'; $params[':dt'] = $dateTo; }
 $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
-
+//excel export function.
 if ($export) {
     $stmt = $pdo->prepare('SELECT id,user_id,user_type,action,ip_address,created_at FROM activity_logs' . $whereSql . ' ORDER BY created_at DESC');
     $stmt->execute($params);

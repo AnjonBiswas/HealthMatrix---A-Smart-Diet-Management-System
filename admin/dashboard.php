@@ -104,4 +104,3 @@ new Chart(document.getElementById('goalChart'),{type:'pie',data:{labels:['Weight
 new Chart(document.getElementById('activeChart'),{type:'bar',data:{labels:<?= json_encode($activeNames) ?>,datasets:[{data:<?= json_encode($activeCounts) ?>,backgroundColor:'#27AE60'}]},options:{indexAxis:'y',plugins:{legend:{display:false}},responsive:true}});
 </script>
 </body></html>
-

@@ -81,7 +81,6 @@ if (isLoggedIn()) {
                 loop
                 playsinline
                 preload="metadata"
-                poster="https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&w=900&q=80"
             >
                 <source src="<?= SITE_URL ?>/assets/images/hero_video.mp4" type="video/mp4">
             </video>

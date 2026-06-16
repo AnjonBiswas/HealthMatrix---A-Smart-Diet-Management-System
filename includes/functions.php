@@ -115,6 +115,78 @@ function uploadImage(array $file, string $folder = 'general'): array
     ];
 }
 
+function ensureMessagesInfrastructure(PDO $pdo): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+
+    try {
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS messages (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                sender_id BIGINT UNSIGNED NOT NULL,
+                sender_type ENUM("user","dietitian") NOT NULL,
+                receiver_id BIGINT UNSIGNED NOT NULL,
+                receiver_type ENUM("user","dietitian") NOT NULL,
+                message TEXT NOT NULL,
+                attachment_path VARCHAR(255) DEFAULT NULL,
+                attachment_name VARCHAR(255) DEFAULT NULL,
+                attachment_mime VARCHAR(120) DEFAULT NULL,
+                is_read TINYINT(1) NOT NULL DEFAULT 0,
+                seen_at TIMESTAMP NULL DEFAULT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        $columns = [];
+        foreach ($pdo->query('SHOW COLUMNS FROM messages') as $column) {
+            $columns[(string) $column['Field']] = true;
+        }
+
+        $requiredColumns = [
+            'attachment_path' => 'ALTER TABLE messages ADD COLUMN attachment_path VARCHAR(255) DEFAULT NULL AFTER message',
+            'attachment_name' => 'ALTER TABLE messages ADD COLUMN attachment_name VARCHAR(255) DEFAULT NULL AFTER attachment_path',
+            'attachment_mime' => 'ALTER TABLE messages ADD COLUMN attachment_mime VARCHAR(120) DEFAULT NULL AFTER attachment_name',
+            'seen_at' => 'ALTER TABLE messages ADD COLUMN seen_at TIMESTAMP NULL DEFAULT NULL AFTER is_read',
+        ];
+
+        foreach ($requiredColumns as $field => $sql) {
+            if (!isset($columns[$field])) {
+                $pdo->exec($sql);
+            }
+        }
+
+        $indexStatements = [
+            'idx_messages_sender' => 'CREATE INDEX idx_messages_sender ON messages (sender_type, sender_id)',
+            'idx_messages_receiver' => 'CREATE INDEX idx_messages_receiver ON messages (receiver_type, receiver_id)',
+            'idx_messages_read' => 'CREATE INDEX idx_messages_read ON messages (is_read)',
+            'idx_messages_conversation' => 'CREATE INDEX idx_messages_conversation ON messages (sender_id, sender_type, receiver_id, receiver_type, created_at)',
+        ];
+
+        $existingIndexes = [];
+        foreach ($pdo->query('SHOW INDEX FROM messages') as $index) {
+            $existingIndexes[(string) $index['Key_name']] = true;
+        }
+
+        foreach ($indexStatements as $indexName => $sql) {
+            if (!isset($existingIndexes[$indexName])) {
+                $pdo->exec($sql);
+            }
+        }
+    } catch (Throwable) {
+        // keep app usable; callers will surface errors if queries still fail later
+    }
+
+    $ensured = true;
+}
+
+function uploadMessageAttachment(array $file): array
+{
+    return uploadImage($file, 'messages');
+}
+
 function sendAlert(string $message, string $type = 'info'): string
 {
     $allowed = [
